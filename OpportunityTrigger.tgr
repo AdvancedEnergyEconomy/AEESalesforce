@@ -1,0 +1,99 @@
+trigger OpportunityTrigger on Opportunity (after insert, after update) {
+    List<Opportunity> opps = new List<Opportunity>();
+    Set<Id> accs = new Set<Id>();
+    for (Opportunity o : Trigger.New){
+        opps.add(o);
+        if (o.AccountId != null && !accs.contains(o.AccountId)) accs.add(o.AccountId);
+    }
+    
+    if(Trigger.IsUpdate){
+        updateAcctExp();
+        //updateRoles();
+    }
+    if(Trigger.IsInsert){
+        //updateRoles();
+        primaryContactRole();
+    }
+    public void updateRoles() {
+        List<Contact> contactsToUpdate = new List<Contact>();
+        List<Id> oppIds = new List<Id>();
+        for(Opportunity opp: opps)
+            oppIds.add(opp.Id);
+        List<OpportunityContactRole> conRoles = [SELECT Id, ContactId, Role FROM OpportunityContactRole WHERE OpportunityId IN :oppIds];
+        List<Id> conRoleIds = new List<Id>();
+        for(OpportunityContactRole conRole: conRoles)
+            conRoleIds.add(conRole.ContactId);
+        List<Contact> contacts = [SELECT Id, Member_Contact_Role__c FROM Contact WHERE Id IN : conRoleIds];
+        for(OpportunityContactRole conRole: conRoles) {
+            for(Contact con : contacts) {
+                if(conRole.ContactId == con.Id) {
+                    if(con.Member_Contact_Role__c == NULL) {
+                       con.Member_Contact_Role__c = conRole.Role;
+                       contactsToUpdate.add(con);
+                    }
+                }
+            }
+        }
+        update(contactsToUpdate);
+    }
+    
+    public void primaryContactRole() {
+        List<Id> oppIds = new List<Id>();
+        List<Opportunity> updateOpps = new List<Opportunity>();
+        Map<Id, Opportunity> oppMap = new Map<Id, Opportunity>([SELECT Id, Primary_Contact__c  FROM Opportunity WHERE Id IN :oppIds]);
+        for(Opportunity opp: opps){
+            oppIds.add(opp.Id);
+        }
+        List<OpportunityContactRole> conRoles = [SELECT Id, ContactId, OpportunityId, Role FROM OpportunityContactRole WHERE OpportunityId IN :oppIds AND IsPrimary = true];
+        for (OpportunityContactRole ocr : conRoles){
+            ocr.Role = 'Primary Membership Contact';
+            Opportunity o = oppMap.get(ocr.OpportunityId);
+            system.debug(ocr.ContactId);
+            //o.Primary_Contact__c = ocr.ContactId;
+            //updateOpps.add(o);
+            
+        }
+        update conRoles;
+        //update updateOpps;
+    }
+    
+    //This code updates the account records by copying data from an Opportunity that has been invoiced and has a different "Expiration Date" than what is on the account.
+    public void updateAcctExp(){
+        List<Account> accLst = [SELECT Id, Most_Recent_Expiration__c FROM Account WHERE Id IN :accs];
+        Map<Id,Opportunity> oppMap = new Map<Id,Opportunity>();
+        for(Opportunity o : [SELECT Id, AccountId, Membership_Expiration_Date__c, StageName, Amount,Membership_Term__c,Allowed_Working_Groups_2__c,Primary_Contact__c,RecordType.Name,Number_of_PowerSuite_Users__c,Membership_Type__c FROM Opportunity 
+                             WHERE AccountId IN :accs AND (RecordType.Name = 'Corporate Relations' OR RecordType.Name = 'Affiliate'OR RecordType.Name='Software Subscription') AND StageName = 'Invoiced'
+                             ORDER BY CreatedDate DESC]){
+            if(oppMap.get(o.AccountId) == null){
+                oppMap.put(o.AccountId, o);
+            }
+        }
+        
+        //system.debug(oppMap);
+        
+        List<Account> updateAcct = new List<Account>();
+        for(Account a : accLst){
+            if(oppMap.containsKey(a.Id)){
+                Opportunity opp = oppMap.get(a.Id);
+                if( a.Most_Recent_Expiration__c != opp.Membership_Expiration_Date__c){
+                    a.Most_Recent_Expiration__c = opp.Membership_Expiration_Date__c;
+                    if(opp.RecordType.Name=='Software Subscription'){
+                        a.PowerSuite_Subscription_Amount__c = opp.Amount;
+                        a.PowerSuite_Max_Allowed_Users__c = opp.Number_of_PowerSuite_Users__c;
+                        }
+                        else{
+                        a.Membership_Amount__c = opp.Amount;
+                        a.Membership_Type__c = opp.Membership_Type__c;
+                        }
+                    //system.debug(opp.Allowed_Working_Groups_2__c);
+                    a.Allowed_Working_Groups__c = opp.Allowed_Working_Groups_2__c;
+                    a.Primary_Membership_Contact__c = opp.Primary_Contact__c;
+                    a.Membership_Term__c = opp.Membership_Term__c;
+                    updateAcct.add(a);
+                }
+            }
+        }
+        update updateAcct;
+        system.debug('Ran Erics Opp Trigger');
+    }
+}
