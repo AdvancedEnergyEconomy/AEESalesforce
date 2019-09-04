@@ -44,13 +44,9 @@ private class TestOpportunityTrigger {
         opp.Account = acct;
         opp.Primary_Contact__c = c.Id;
         opp.AccountId = acct.Id;
-       
-        System.debug('Opportunity Amount ='+ opp.Amount);
-        System.debug('Record Type ='+ opp.RecordTypeId);
-        System.debug('Opp Name ='+ opp.Name);
         
         insert opp;
-        List<Opportunity> myopps =[select id from Opportunity where accountid=: acct.id];
+        //List<Opportunity> myopps =[select id from Opportunity where accountid=: acct.id];
 		//System.debug('Check number of opps on account ='+ myopps.size());
         opp.StageName = 'Invoiced';
 
@@ -58,7 +54,6 @@ private class TestOpportunityTrigger {
         Test.startTest();
         update opp;
 
-        
         // Verify by querying the temporary Salesforce database. This is the only "true" way to check if insert/updates worked.
         Account accRes = [SELECT Id, 
                           Name,
@@ -95,14 +90,8 @@ private class TestOpportunityTrigger {
         poweropp.Account = acct;
         poweropp.Primary_Contact__c = c2.Id;
         poweropp.AccountId = acct.Id;
-       
-        //System.debug('PowerSuite Opportunity Amount ='+ poweropp.Amount);
-        //System.debug('PowerSuite Record Type ='+ poweropp.RecordTypeId);
-        //System.debug('Opp Name ='+ poweropp.Name);
         
         insert poweropp;
-        
-        //List<Opportunity> myopps2 =[select id from Opportunity where accountid=: acct.id];
         
         poweropp.StageName = 'Invoiced';
 
