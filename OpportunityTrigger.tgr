@@ -60,9 +60,11 @@ trigger OpportunityTrigger on Opportunity (after insert, after update) {
     //This updates the account records by copying data from an Opportunity that has been
     // invoiced AND is the most recently modifyied opportunity on an account.
     public void updateAcctExp(){
-        List<Account> accLst = [SELECT Id, 
+        List<Account> accLst = [SELECT Id,
+                                Annual_Membership_Start_Date__c,
                                 Most_Recent_Expiration__c,
-                                Name
+                                Name,
+                                Membership_Type__c
                                 FROM Account WHERE Id IN :accs];
         //I am not sure why it is neccessary to map this objects into a id/Opp hash but the code works as is.
         Map<Id,Opportunity> oppMap = new Map<Id,Opportunity>();
@@ -93,20 +95,29 @@ trigger OpportunityTrigger on Opportunity (after insert, after update) {
         List<Account> updateAcct = new List<Account>();
         for(Account a : accLst){
             if(oppMap.containsKey(a.Id)){
-                Opportunity opp = oppMap.get(a.Id);
-                //system.debug('Account Name that will have values updated ='+ a.Name);
-                //system.debug('Source Opportunity ='+ opp.Name);
-                //Copy customer data that is needed regardless of opportunity type
-                a.Annual_Membership_Start_Date__c = opp.Annual_Membership_Start_Date__c;
-                a.Most_Recent_Expiration__c = opp.Membership_Expiration_Date__c;
-                a.Membership_Term__c = opp.Membership_Term__c;
-                a.Primary_Membership_Contact__c = opp.Primary_Contact__c;
+                Opportunity opp = oppMap.get(a.Id);         
                 
                 //Copy or change PowerSuite subscription specific data 
                 if(opp.RecordType.Name=='Software Subscription'){
                     system.debug('Copying data for PowerSuite opp');
                     a.PowerSuite_Subscription_Amount__c = opp.Amount;
                     a.PowerSuite_Max_Allowed_Users__c = opp.Number_of_PowerSuite_Users__c;
+                    
+                    //If clause is here to ensure that PowerSuite values don't overwrite membership values
+                    //If the customer is already a member            
+                    if(a.Membership_Type__c == 'PowerSuite Paid Subscriber' 
+                       || a.Membership_Type__c == 'Former Member'
+                       || a.Membership_Type__c == 'Non-Member'
+                       || a.Membership_Type__c == null){
+                           
+                            a.Primary_Membership_Contact__c = opp.Primary_Contact__c;
+                            a.Membership_Type__c = 'PowerSuite Paid Subscriber';
+                            a.Annual_Membership_Start_Date__c = opp.Annual_Membership_Start_Date__c;
+                            a.Most_Recent_Expiration__c = opp.Membership_Expiration_Date__c;
+                            a.Membership_Term__c = opp.Membership_Term__c;
+                            system.debug('In special PowerSuite opp if statement='+ a.Annual_Membership_Start_Date__c);
+                    }
+                    
                 }
                 //Otherwise assume it is membership related data that needs to be copied
                 else{
@@ -116,13 +127,15 @@ trigger OpportunityTrigger on Opportunity (after insert, after update) {
                     a.Membership_Type__c = opp.Membership_Type__c;
                     //system.debug(opp.Allowed_Working_Groups_2__c);
                     a.Allowed_Working_Groups__c = opp.Allowed_Working_Groups_2__c;
+                    a.Annual_Membership_Start_Date__c = opp.Annual_Membership_Start_Date__c;
+                    //system.debug('Account start date after copying Membership data='+ a.Annual_Membership_Start_Date__c);
+                	a.Most_Recent_Expiration__c = opp.Membership_Expiration_Date__c;
+                	a.Membership_Term__c = opp.Membership_Term__c;
                 }
-
-                updateAcct.add(a);
-               
+               updateAcct.add(a);
+               update updateAcct;
             }
         }
-        update updateAcct;
         system.debug('Ran Erics Opp Trigger');
     }
 }
